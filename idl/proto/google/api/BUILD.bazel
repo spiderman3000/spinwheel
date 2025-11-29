@@ -1,0 +1,46 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//proto:def.bzl", "go_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+# Proto library for Google API annotations
+proto_library(
+    name = "annotations_proto",
+    srcs = ["annotations.proto"],
+    visibility = ["//visibility:public"],
+    deps = ["@protobuf//:descriptor_proto"],
+)
+
+proto_library(
+    name = "http_proto",
+    srcs = ["http.proto"],
+    visibility = ["//visibility:public"],
+    deps = ["@protobuf//:descriptor_proto"],
+)
+
+proto_library(
+    name = "api_proto",
+    srcs = [
+        "annotations.proto",
+        "http.proto",
+    ],
+    visibility = ["//visibility:public"],
+    deps = ["@protobuf//:descriptor_proto"],
+)
+
+# Go proto library for Google API annotations
+go_proto_library(
+    name = "annotations_go_proto",
+    compilers = ["@rules_go//proto:go_grpc_v2"],
+    importpath = "google.golang.org/genproto/googleapis/api/annotations",
+    proto = ":annotations_proto",
+    visibility = ["//visibility:public"],
+)
+
+# Go proto library for Google API http
+go_proto_library(
+    name = "http_go_proto",
+    compilers = ["@rules_go//proto:go_grpc_v2"],
+    importpath = "google.golang.org/genproto/googleapis/api/httpbody",
+    proto = ":http_proto",
+    visibility = ["//visibility:public"],
+)

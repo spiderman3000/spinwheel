@@ -1,0 +1,45 @@
+load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//proto:def.bzl", "go_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+
+# Proto compilation placeholder
+filegroup(
+    name = "v1_proto_files",
+    srcs = [
+        "service.proto",
+        "wheel.proto",
+    ],
+)
+
+filegroup(
+    name = "v1_go_proto",
+    srcs = [":v1_proto_files"],
+    visibility = ["//visibility:public"],
+)
+
+proto_library(
+    name = "spinwheelv1_proto",
+    srcs = [
+        "service.proto",
+        "wheel.proto",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@protobuf//:timestamp_proto",
+    ],
+)
+
+go_proto_library(
+    name = "spinwheelv1_go_proto",
+    compilers = ["@rules_go//proto:go_grpc"],
+    importpath = "spinwheel/backend/gen/proto/spinwheel/v1",
+    proto = ":spinwheelv1_proto",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "spinwheel",
+    embed = [":spinwheelv1_go_proto"],
+    importpath = "spinwheel/backend/gen/proto/spinwheel/v1",
+    visibility = ["//visibility:public"],
+)

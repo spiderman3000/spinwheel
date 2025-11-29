@@ -1,0 +1,12 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "service",
+    srcs = ["wheel.go"],
+    importpath = "spinwheel/backend/internal/service",
+    visibility = ["//backend:__subpackages__"],
+    deps = [
+        "//backend/internal/repository",
+        "//backend/pkg/models",
+    ],
+)

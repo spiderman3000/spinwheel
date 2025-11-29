@@ -1,0 +1,162 @@
+# Bazel build files
+bazel-bin
+bazel-out
+bazel-testlogs
+bazel-spinwheel
+bazel-runfiles
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.vim/
+*.iml
+.clangd/
+.ccls-cache/
+
+# Node/Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+npm-debug.log*
+yarn-error.log*
+yarn-debug.log*
+.env
+.env.local
+.env.production.local
+.env.test.local
+*.pem
+.next/
+out/
+
+# Go/Backend
+backend/vendor/
+backend/go.sum
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+debug
+debug.exe
+go*.linux-*.tar.gz
+go*.darwin-*.tar.gz
+go*.windows-*.zip
+*.prof
+*.test
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# OS specific
+.DS_Store
+Thumbs.db
+*.log
+
+# Local development
+.local/
+.cache/
+tmp/
+temp/
+google-cloud-sdk/
+.gcloud/
+/workspaces/spinwheel/instructions
+
+
+# Google Cloud SDK
+gcloud
+gsutil
+bq
+
+# Generated files
+*.pb.go
+*_pb.go
+*_grpc.pb.go
+*.proto.go
+
+# Protocol Buffers
+idl/gen/
+
+# Java/Gradle
+.gradle/
+gradle/
+gradlew
+gradlew.bat
+
+# Ruby
+.ruby-version
+.bundle/
+Gemfile.lock
+
+
+# Add to .gitignore if not already present:
+echo "
+# Secrets
+*.env
+*.env.local
+*.env.production
+.env.*
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# IDE
+.vscode/settings.json
+.idea/workspace.xml
+
+# Build artifacts
+bazel-*
+node_modules/
+dist/
+*.log
+" >> .gitignore
+# Secrets
+*.env
+*.env.local
+*.env.production
+.env.*
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# IDE
+.vscode/settings.json
+.idea/workspace.xml
+
+# Build artifacts
+bazel-*
+node_modules/
+dist/
+*.log
+

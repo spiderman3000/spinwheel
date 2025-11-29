@@ -1,0 +1,826 @@
+// Copyright 2024 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package google.api;
+
+import "google/protobuf/descriptor.proto";
+
+// See `HttpRule` for a detailed explanation of how to use this annotation.
+extend google.protobuf.MethodOptions {
+  // Defines the HTTP configuration for a method.
+  HttpRule http = 72295728;
+}
+
+// Defines the HTTP configuration for an API service. It contains a list of
+// `HttpRule` definitions, each specifying the mapping of an RPC method
+// to one or more HTTP REST API methods.
+message Http {
+  // A list of HTTP configuration rules that apply to individual API methods.
+  //
+  // **NOTE:** All service configuration rules follow "last one wins" order.
+  repeated HttpRule rules = 1;
+
+  // When set to true, URL path parameters will be fully URI-decoded except
+  // for `%2F` paths. This cannot be used with HTTP transports that are
+  // specified to perform this decoding already (e.g. gRPC-JSON transcoding
+  //).
+  //
+  // This field is not implemented by the server yet.
+  bool fully_decode_reserved_expansion = 2;
+}
+
+// `HttpRule` defines the mapping of an RPC method to one or more HTTP
+// REST API methods.
+//
+// The mapping specifies how different parts of the RPC request message are
+// mapped to URL path, URL query parameters, and HTTP request body.
+//
+// The simple REST API defined by `HttpRule` is a particular mapping of REST
+// API methods to an RPC service, where the entire request message is mapped
+// to the HTTP request body, or a subset of the request message is mapped to
+// the HTTP request body and the rest is mapped to HTTP request headers and
+// URL query parameters.
+//
+// `HttpRule` is designed to be flexible enough to define REST APIs that are
+// aligned with REST best practices, while also being able to accommodate
+// legacy REST APIs that are not so well designed.
+//
+// It needs to be noted that, `HttpRule` is used to define HTTP REST API
+// for gRPC services. It is not a general purpose REST API definition language.
+//
+//
+// # Examples
+//
+// ## Simple Get
+//
+// The following `HttpRule` defines a simple GET method for the `GetSomething`
+// RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id}"
+//       };
+//     }
+//
+// The `id` field of the `GetSomethingRequest` message is mapped to the
+// `{id}` template in the URL path. All other fields of the request message
+// are ignored. The response message `Something` is mapped to the HTTP
+// response body.
+//
+// ## Simple Post
+//
+// The following `HttpRule` defines a simple POST method for the `CreateSomething`
+// RPC method:
+//
+//     rpc CreateSomething(CreateSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         post: "/v1/somethings"
+//         body: "*"
+//       };
+//     }
+//
+// The entire `CreateSomethingRequest` message is mapped to the HTTP request
+// body. The response message `Something` is mapped to the HTTP response body.
+//
+// ## Simple Delete
+//
+// The following `HttpRule` defines a simple DELETE method for the
+// `DeleteSomething` RPC method:
+//
+//     rpc DeleteSomething(DeleteSomethingRequest) returns (google.protobuf.Empty) {
+//       option (google.api.http) = {
+//         delete: "/v1/somethings/{id}"
+//       };
+//     }
+//
+// The `id` field of the `DeleteSomethingRequest` message is mapped to the
+// `{id}` template in the URL path. The `google.protobuf.Empty` response
+// message is mapped to an empty HTTP response body.
+//
+// ## Simple Patch
+//
+// The following `HttpRule` defines a simple PATCH method for the
+// `UpdateSomething` RPC method:
+//
+//     rpc UpdateSomething(UpdateSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         patch: "/v1/somethings/{id}"
+//         body: "*"
+//       };
+//     }
+//
+// The `id` field of the `UpdateSomethingRequest` message is mapped to the
+// `{id}` template in the URL path. The entire `UpdateSomethingRequest`
+// message is mapped to the HTTP request body.
+//
+// ## Custom Verb
+//
+// The following `HttpRule` defines a custom verb for the `Foo` RPC method:
+//
+//     rpc Foo(FooRequest) returns (FooResponse) {
+//       option (google.api.http) = {
+//         post: "/v1/foos/{id}:foo"
+//         body: "*"
+//       };
+//     }
+//
+// The `id` field of the `FooRequest` message is mapped to the `{id}` template
+// in the URL path. The `Foo` verb is mapped to the `:foo` suffix in the URL
+// path. The entire `FooRequest` message is mapped to the HTTP request body.
+//
+// ## Path with Query Parameters
+//
+// The following `HttpRule` defines a path with query parameters for the
+// `ListSomething` RPC method:
+//
+//     rpc ListSomething(ListSomethingRequest) returns (ListSomethingResponse) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings"
+//       };
+//     }
+//
+// The `page_size` and `page_token` fields of the `ListSomethingRequest`
+// message are mapped to the `pageSize` and `pageToken` query parameters,
+// respectively. All other fields of the request message are ignored.
+//
+// ## Path with Nested Message
+//
+// The following `HttpRule` defines a path with a nested message for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id.sub_id}"
+//       };
+//     }
+//
+// The `sub_id` field of the nested `id` message in the `GetSomethingRequest`
+// message is mapped to the `{id.sub_id}` template in the URL path.
+//
+// ## Path with Multiple Nested Messages
+//
+// The following `HttpRule` defines a path with multiple nested messages for
+// the `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id.sub_id_1.sub_id_2}"
+//       };
+//     }
+//
+// The `sub_id_2` field of the nested `sub_id_1` message, which is nested in
+// the `id` message in the `GetSomethingRequest` message, is mapped to the
+// `{id.sub_id_1.sub_id_2}` template in the URL path.
+//
+// ## Path with Wildcard
+//
+// The following `HttpRule` defines a path with a wildcard for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/*"
+//       };
+//     }
+//
+// The `*` wildcard in the URL path is mapped to the `path` field of the
+// `GetSomethingRequest` message.
+//
+// ## Path with Multiple Wildcards
+//
+// The following `HttpRule` defines a path with multiple wildcards for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{name=shelves/*/books/*}"
+//       };
+//     }
+//
+// The `{name=shelves/*/books/*}` template in the URL path is mapped to the
+// `name` field of the `GetSomethingRequest` message. The `name` field is
+// expected to be of the form `shelves/{shelf_id}/books/{book_id}`.
+//
+// ## Path with Custom Verb and Wildcard
+//
+// The following `HttpRule` defines a path with a custom verb and a wildcard
+// for the `Foo` RPC method:
+//
+//     rpc Foo(FooRequest) returns (FooResponse) {
+//       option (google.api.http) = {
+//         post: "/v1/foos/{id}:foo"
+//         body: "*"
+//       };
+//     }
+//
+// The `id` field of the `FooRequest` message is mapped to the `{id}` template
+// in the URL path. The `Foo` verb is mapped to the `:foo` suffix in the URL
+// path. The entire `FooRequest` message is mapped to the HTTP request body.
+//
+// ## Additional Bindings
+//
+// The following `HttpRule` defines an additional binding for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id}"
+//         additional_bindings {
+//           get: "/v1/users/{user_id}/somethings/{id}"
+//         }
+//       };
+//     }
+//
+// The additional binding allows the `GetSomething` RPC method to be called
+// with a different URL path. The `user_id` field of the `GetSomethingRequest`
+// message is mapped to the `{user_id}` template in the URL path.
+//
+// # Mappings
+//
+// The mapping between the RPC request message and the HTTP request is
+// specified by the `HttpRule`. The `HttpRule` contains a `pattern` and a
+// `body`. The `pattern` specifies the URL path and the HTTP method. The
+// `body` specifies the mapping of the RPC request message to the HTTP
+// request body.
+//
+// ## URL Path
+//
+// The URL path is specified by the `pattern`. The `pattern` can be a simple
+// path, such as `/v1/somethings`, or a path with templates, such as
+// `/v1/somethings/{id}`. The templates are mapped to the fields of the RPC
+// request message.
+//
+// The syntax for the path template is:
+//
+//     Template = "/" Segments [ Verb ] ;
+//     Segments = Segment { "/" Segment } ;
+//     Segment  = "*" | "**" | LITERAL | Variable ;
+//     Variable = "{" FieldPath [ "=" Segments ] "}" ;
+//     FieldPath = IDENT { "." IDENT } ;
+//     Verb     = ":" LITERAL ;
+//
+// The `IDENT` is a field name of the request message. The `FieldPath` is a
+// dot-separated sequence of field names. The `LITERAL` is a literal string.
+// The `*` matches a single path segment. The `**` matches zero or more path
+// segments. The `Verb` is a custom verb, such as `:foo`.
+//
+// The `Variable` can have an optional `Segments` part, which is used to
+// match a sub-path of the URL path. For example, if the `pattern` is
+// `/v1/shelves/{shelf=shelves/*}/books/{book=books/*}`, and the URL path is
+// `/v1/shelves/s1/books/b1`, then the `shelf` field of the request message
+// is set to `shelves/s1`, and the `book` field is set to `books/b1`.
+//
+// ## Query Parameters
+//
+// The query parameters are mapped to the fields of the RPC request message.
+// The mapping is specified by the `body`. If the `body` is `*`, then all
+// fields of the request message are mapped to the query parameters. If the
+// `body` is empty, then no fields of the request message are mapped to the
+// query parameters. Otherwise, the `body` specifies the fields of the
+// request message that are mapped to the query parameters.
+//
+// The field names in the `body` are mapped to the query parameter names.
+// For example, if the `body` is `foo,bar`, then the `foo` and `bar` fields
+// of the request message are mapped to the `foo` and `bar` query parameters,
+// respectively.
+//
+// ## HTTP Request Body
+//
+// The HTTP request body is mapped to the fields of the RPC request message.
+// The mapping is specified by the `body`. If the `body` is `*`, then the
+// entire request message is mapped to the HTTP request body. If the `body`
+// is empty, then the HTTP request body is empty. Otherwise, the `body`
+// specifies the fields of the request message that are mapped to the HTTP
+// request body.
+//
+// The field names in the `body` are mapped to the JSON field names in the
+// HTTP request body. For example, if the `body` is `foo,bar`, then the `foo`
+// and `bar` fields of the request message are mapped to the `foo` and `bar`
+// JSON fields in the HTTP request body, respectively.
+//
+// ## HTTP Method
+//
+// The HTTP method is specified by the `pattern`. The `pattern` can be one of
+// the following:
+//
+// - `get: <url_template>`
+// - `put: <url_template>`
+// - `post: <url_template>`
+// - `delete: <url_template>`
+// - `patch: <url_template>`
+// - `custom: { kind: <http_method>, path: <url_template> }`
+//
+// The `custom` pattern is used to specify a custom HTTP method, such as
+// `PROPFIND`.
+//
+// # Path Template Syntax
+//
+//     Template = "/" Segments [ Verb ] ;
+//     Segments = Segment { "/" Segment } ;
+//     Segment  = "*" | "**" | LITERAL | Variable ;
+//     Variable = "{" FieldPath [ "=" Segments ] "}" ;
+//     FieldPath = IDENT { "." IDENT } ;
+//     Verb     = ":" LITERAL ;
+//
+// The syntax `*` matches a single URL path segment. The syntax `**` matches
+// zero or more URL path segments, which must be the last part of the URL path
+// except the optional verb.
+//
+// The syntax `Variable` matches part of the URL path. A `Variable` contains
+// a `FieldPath`, which is a sequence of dot-separated field names that
+// describes a path to a field in the request message.
+//
+// E.g. `message M { string f = 1; }` and `path: "/messages/{f}"`.
+//
+// A `Variable` can also contain an optional `Segments` part to specify the
+// sub-path matching pattern.
+//
+// E.g. `message M { string f = 1; }` and `path: "/messages/{f=**}"`.
+//
+// E.g. `message M { string f = 1; }` and `path: "/messages/{f=messages/*}"`.
+//
+// The syntax `LITERAL` matches literal text in the URL path. The syntax
+// `Verb` matches the verb part of the URL path, if any.
+//
+// # Body
+//
+// The `body` field specifies the mapping of the request message to the HTTP
+// request body. It can be `*` or a comma-separated list of field names.
+//
+// If `body` is `*`, it means the whole request message is used as the HTTP
+// request body. Any remaining request fields will become HTTP query
+// parameters.
+//
+// If `body` is empty, it means the HTTP request body is empty. All remaining
+// request fields will become HTTP query parameters.
+//
+// If `body` is a comma-separated list of field names, it means the specified
+// fields are used as the HTTP request body. Any remaining request fields
+// will become HTTP query parameters.
+//
+// # Additional Bindings
+//
+// The `additional_bindings` field specifies a list of additional HTTP
+// bindings for the same RPC method. This is useful for supporting legacy
+// REST APIs that have multiple URL paths for the same RPC method.
+//
+// # Semantics
+//
+// The semantics of the `HttpRule` is as follows:
+//
+// - The `pattern` is matched against the URL path.
+// - The `body` is used to map the request message to the HTTP request body.
+// - The remaining fields of the request message are mapped to the URL query
+//   parameters.
+// - The response message is mapped to the HTTP response body.
+//
+// The matching of the URL path is done as follows:
+//
+// - The URL path is split into segments.
+// - The `pattern` is also split into segments.
+// - The segments are matched one by one.
+// - If a segment in the `pattern` is a `LITERAL`, it must match the
+//   corresponding segment in the URL path.
+// - If a segment in the `pattern` is a `*`, it matches any single segment in
+//   the URL path.
+// - If a segment in the `pattern` is a `**`, it matches zero or more
+//   segments in the URL path. It must be the last segment in the `pattern`
+//   except the optional verb.
+// - If a segment in the `pattern` is a `Variable`, it matches a segment in
+//   the URL path. The matched segment is parsed and stored in the
+//   corresponding field of the request message.
+//
+- `HttpRule` defines the mapping of a single RPC method to a single HTTP
+// REST API method.
+//
+// The mapping specifies how different parts of the RPC request message are
+// mapped to URL path, URL query parameters, and HTTP request body.
+//
+// The simple REST API defined by `HttpRule` is a particular mapping of REST
+// API methods to an RPC service, where the entire request message is mapped
+// to the HTTP request body, or a subset of the request message is mapped to
+// the HTTP request body and the rest is mapped to HTTP request headers and
+// URL query parameters.
+//
+// `HttpRule` is designed to be flexible enough to define REST APIs that are
+// aligned with REST best practices, while also being able to accommodate
+// legacy REST APIs that are not so well designed.
+//
+// It needs to be noted that, `HttpRule` is used to define HTTP REST API
+// for gRPC services. It is not a general purpose REST API definition language.
+//
+//
+// # Examples
+//
+// ## Simple Get
+//
+// The following `HttpRule` defines a simple GET method for the `GetSomething`
+// RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id}"
+//       };
+//     }
+//
+// The `id` field of the `GetSomethingRequest` message is mapped to the
+// `{id}` template in the URL path. All other fields of the request message
+// are ignored. The response message `Something` is mapped to the HTTP
+// response body.
+//
+// ## Simple Post
+//
+// The following `HttpRule` defines a simple POST method for the `CreateSomething`
+// RPC method:
+//
+//     rpc CreateSomething(CreateSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         post: "/v1/somethings"
+//         body: "*"
+//       };
+//     }
+//
+// The entire `CreateSomethingRequest` message is mapped to the HTTP request
+// body. The response message `Something` is mapped to the HTTP response body.
+//
+// ## Simple Delete
+//
+// The following `HttpRule` defines a simple DELETE method for the
+// `DeleteSomething` RPC method:
+//
+//     rpc DeleteSomething(DeleteSomethingRequest) returns (google.protobuf.Empty) {
+//       option (google.api.http) = {
+//         delete: "/v1/somethings/{id}"
+//       };
+//     }
+//
+// The `id` field of the `DeleteSomethingRequest` message is mapped to the
+// `{id}` template in the URL path. The `google.protobuf.Empty` response
+// message is mapped to an empty HTTP response body.
+//
+// ## Simple Patch
+//
+// The following `HttpRule` defines a simple PATCH method for the
+// `UpdateSomething` RPC method:
+//
+//     rpc UpdateSomething(UpdateSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         patch: "/v1/somethings/{id}"
+.
+//         body: "*"
+//       };
+//     }
+//
+// The `id` field of the `UpdateSomethingRequest` message is mapped to the
+// `{id}` template in the URL path. The entire `UpdateSomethingRequest`
+// message is mapped to the HTTP request body.
+//
+// ## Custom Verb
+//
+// The following `HttpRule` defines a custom verb for the `Foo` RPC method:
+//
+//     rpc Foo(FooRequest) returns (FooResponse) {
+//       option (google.api.http) = {
+//         post: "/v1/foos/{id}:foo"
+//         body: "*"
+//       };
+//     }
+//
+// The `id` field of the `FooRequest` message is mapped to the `{id}` template
+// in the URL path. The `Foo` verb is mapped to the `:foo` suffix in the URL
+// path. The entire `FooRequest` message is mapped to the HTTP request body.
+//
+// ## Path with Query Parameters
+//
+// The following `HttpRule` defines a path with query parameters for the
+// `ListSomething` RPC method:
+//
+//     rpc ListSomething(ListSomethingRequest) returns (ListSomethingResponse) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings"
+//       };
+//     }
+//
+// The `page_size` and `page_token` fields of the `ListSomethingRequest`
+// message are mapped to the `pageSize` and `pageToken` query parameters,
+// respectively. All other fields of the request message are ignored.
+//
+// ## Path with Nested Message
+//
+// The following `HttpRule` defines a path with a nested message for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id.sub_id}"
+//       };
+//     }
+//
+// The `sub_id` field of the nested `id` message in the `GetSomethingRequest`
+// message is mapped to the `{id.sub_id}` template in the URL path.
+//
+// ## Path with Multiple Nested Messages
+//
+// The following `HttpRule` defines a path with multiple nested messages for
+// the `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id.sub_id_1.sub_id_2}"
+//       };
+//     }
+//
+// The `sub_id_2` field of the nested `sub_id_1` message, which is nested in
+// the `id` message in the `GetSomethingRequest` message, is mapped to the
+// `{id.sub_id_1.sub_id_2}` template in the URL path.
+//
+// ## Path with Wildcard
+//
+// The following `HttpRule` defines a path with a wildcard for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/*"
+//       };
+//     }
+//
+// The `*` wildcard in the URL path is mapped to the `path` field of the
+// `GetSomethingRequest` message.
+//
+// ## Path with Multiple Wildcards
+//
+// The following `HttpRule` defines a path with multiple wildcards for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{name=shelves/*/books/*}"
+//       };
+//     }
+//
+// The `{name=shelves/*/books/*}` template in the URL path is mapped to the
+// `name` field of the `GetSomethingRequest` message. The `name` field is
+// expected to be of the form `shelves/{shelf_id}/books/{book_id}`.
+//
+// ## Path with Custom Verb and Wildcard
+//
+// The following `HttpRule` defines a path with a custom verb and a wildcard
+// for the `Foo` RPC method:
+//
+//     rpc Foo(FooRequest) returns (FooResponse) {
+//       option (google.api.http) = {
+//         post: "/v1/foos/{id}:foo"
+//         body: "*"
+//       };
+//     }
+//
+// The `id` field of the `FooRequest` message is mapped to the `{id}` template
+// in the URL path. The `Foo` verb is mapped to the `:foo` suffix in the URL
+// path. The entire `FooRequest` message is mapped to the HTTP request body.
+//
+// ## Additional Bindings
+//
+// The following `HttpRule` defines an additional binding for the
+// `GetSomething` RPC method:
+//
+//     rpc GetSomething(GetSomethingRequest) returns (Something) {
+//       option (google.api.http) = {
+//         get: "/v1/somethings/{id}"
+//         additional_bindings {
+//           get: "/v1/users/{user_id}/somethings/{id}"
+//         }
+//       };
+//     }
+//
+// The additional binding allows the `GetSomething` RPC method to be called
+// with a different URL path. The `user_id` field of the `GetSomethingRequest`
+// message is mapped to the `{user_id}` template in the URL path.
+//
+// # Mappings
+//
+// The mapping between the RPC request message and the HTTP request is
+// specified by the `HttpRule`. The `HttpRule` contains a `pattern` and a
+// `body`. The `pattern` specifies the URL path and the HTTP method. The
+// `body` specifies the mapping of the RPC request message to the HTTP
+// request body.
+//
+// ## URL Path
+//
+// The URL path is specified by the `pattern`. The `pattern` can be a simple
+// path, such as `/v1/somethings`, or a path with templates, such as
+// `/v1/somethings/{id}`. The templates are mapped to the fields of the RPC
+// request message.
+//
+// The syntax for the path template is:
+//
+//     Template = "/" Segments [ Verb ] ;
+//     Segments = Segment { "/" Segment } ;
+//     Segment  = "*" | "**" | LITERAL | Variable ;
+//     Variable = "{" FieldPath [ "=" Segments ] "}" ;
+//     FieldPath = IDENT { "." IDENT } ;
+//     Verb     = ":" LITERAL ;
+//
+// The `IDENT` is a field name of the request message. The `FieldPath` is a
+// dot-separated sequence of field names. The `LITERAL` is a literal string.
+// The `*` matches a single path segment. The `**` matches zero or more path
+// segments. The `Verb` is a custom verb, such as `:foo`.
+//
+// The `Variable` can have an optional `Segments` part, which is used to
+// match a sub-path of the URL path. For example, if the `pattern` is
+// `/v1/shelves/{shelf=shelves/*}/books/{book=books/*}`, and the URL path is
+// `/v1/shelves/s1/books/b1`, then the `shelf` field of the request message
+// is set to `shelves/s1`, and the `book` field is set to `books/b1`.
+//
+// ## Query Parameters
+//
+// The query parameters are mapped to the fields of the RPC request message.
+// The mapping is specified by the `body`. If the `body` is `*`, then all
+// fields of the request message are mapped to the query parameters. If the
+// `body` is empty, then no fields of the request message are mapped to the
+// query parameters. Otherwise, the `body` specifies the fields of the
+// request message that are mapped to the query parameters.
+//
+// The field names in the `body` are mapped to the query parameter names.
+// For example, if the `body` is `foo,bar`, then the `foo` and `bar` fields
+// of the request message are mapped to the `foo` and `bar` query parameters,
+// respectively.
+//
+// ## HTTP Request Body
+//
+// The HTTP request body is mapped to the fields of the RPC request message.
+// The mapping is specified by the `body`. If the `body` is `*`, then the
+// entire request message is mapped to the HTTP request body. If the `body`
+// is empty, then the HTTP request body is empty. Otherwise, the `body`
+// specifies the fields of the request message that are mapped to the HTTP
+// request body.
+//
+// The field names in the `body` are mapped to the JSON field names in the
+// HTTP request body. For example, if the `body` is `foo,bar`, then the `foo`
+// and `bar` fields of the request message are mapped to the `foo` and `bar`
+JSON fields in the HTTP request body, respectively.
+//
+// ## HTTP Method
+//
+// The HTTP method is specified by the `pattern`. The `pattern` can be one of
+// the following:
+//
+// - `get: <url_template>`
+// - `put: <url_template>`
+// - `post: <url_template>`
+// - `delete: <url_template>`
+// - `patch: <url_template>`
+// - `custom: { kind: <http_method>, path: <url_template> }`
+//
+// The `custom` pattern is used to specify a custom HTTP method, such as
+// `PROPFIND`.
+//
+// # Path Template Syntax
+//
+//     Template = "/" Segments [ Verb ] ;
+//     Segments = Segment { "/" Segment } ;
+//     Segment  = "*" | "**" | LITERAL | Variable ;
+//     Variable = "{" FieldPath [ "=" Segments ] "}" ;
+//     FieldPath = IDENT { "." IDENT } ;
+//     Verb     = ":" LITERAL ;
+//
+// The syntax `*` matches a single URL path segment. The syntax `**` matches
+// zero or more URL path segments, which must be the last part of the URL path
+// except the optional verb.
+//
+// The syntax `Variable` matches part of the URL path. A `Variable` contains
+// a `FieldPath`, which is a sequence of dot-separated field names that
+// describes a path to a field in the request message.
+//
+// E.g. `message M { string f = 1; }` and `path: "/messages/{f}"`.
+//
+// A `Variable` can also contain an optional `Segments` part to specify the
+// sub-path matching pattern.
+//
+// E.g. `message M { string f = 1; }` and `path: "/messages/{f=**}"`.
+//
+// E.g. `message M { string f = 1; }` and `path: "/messages/{f=messages/*}"`.
+//
+// The syntax `LITERAL` matches literal text in the URL path. The syntax
+// `Verb` matches the verb part of the URL path, if any.
+//
+// # Body
+//
+// The `body` field specifies the mapping of the request message to the HTTP
+// request body. It can be `*` or a comma-separated list of field names.
+//
+// If `body` is `*`, it means the whole request message is used as the HTTP
+// request body. Any remaining request fields will become HTTP query
+// parameters.
+//
+// If `body` is empty, it means the HTTP request body is empty. All remaining
+// request fields will become HTTP query parameters.
+//
+// If `body` is a comma-separated list of field names, it means the specified
+// fields are used as the HTTP request body. Any remaining request fields
+// will become HTTP query parameters.
+//
+// # Additional Bindings
+//
+// The `additional_bindings` field specifies a list of additional HTTP
+// bindings for the same RPC method. This is useful for supporting legacy
+// REST APIs that have multiple URL paths for the same RPC method.
+//
+// # Semantics
+//
+// The semantics of the `HttpRule` is as follows:
+//
+// - The `pattern` is matched against the URL path.
+// - The `body` is used to map the request message to the HTTP request body.
+// - The remaining fields of the request message are mapped to the URL query
+//   parameters.
+// - The response message is mapped to the HTTP response body.
+//
+// The matching of the URL path is done as follows:
+//
+// - The URL path is split into segments.
+// - The `pattern` is also split into segments.
+// - The segments are matched one by one.
+// - If a segment in the `pattern` is a `LITERAL`, it must match the
+//   corresponding segment in the URL path.
+// - If a segment in the `pattern` is a `*`, it matches any single segment in
+//   the URL path.
+// - If a segment in the `pattern` is a `**`, it matches zero or more
+//   segments in the URL path. It must be the last segment in the `pattern`
+//   except the optional verb.
+// - If a segment in the `pattern` is a `Variable`, it matches a segment in
+//   the URL path. The matched segment is parsed and stored in the
+//   corresponding field of the request message.
+message HttpRule {
+  // Selects a method to which this rule applies.
+  //
+  // Refer to [selector][google.api.DocumentationRule.selector] for syntax details.
+  string selector = 1;
+
+  // The name of the request field whose value is mapped to the HTTP body, or
+  // `*` for mapping all fields not captured by the path pattern to the HTTP
+  // body.
+  //
+  // NOTE: the referred field must be present at the top-level of the request
+  // message type.
+  string body = 7;
+
+  // Optional. The name of the response field whose value is mapped to the HTTP
+  // response body. When omitted, the entire response message will be used
+  // as the HTTP response body.
+  //
+  // NOTE: the referred field must be present at the top-level of the response
+  // message type.
+  string response_body = 12;
+
+  // Additional HTTP bindings for the selector. Nested bindings must
+  // not contain an `additional_bindings` field themselves (that is,
+  // the nesting may only be one level deep).
+  repeated HttpRule additional_bindings = 11;
+
+  // Determines the URL pattern is matched by this rules. This pattern can be
+  // used with any of the {get|put|post|delete|patch} methods. A custom method
+  // can be defined using the 'custom' field.
+  oneof pattern {
+    // Maps to HTTP GET. Used for listing and getting information about
+    // resources.
+    string get = 2;
+
+    // Maps to HTTP PUT. Used for replacing a resource.
+    string put = 3;
+
+    // Maps to HTTP POST. Used for creating a resource or performing an action.
+    string post = 4;
+
+    // Maps to HTTP DELETE. Used for deleting a resource.
+    string delete = 5;
+
+    // Maps to HTTP PATCH. Used for updating a resource.
+    string patch = 6;
+
+    // The custom pattern is used for specifying custom HTTP verbs.
+    CustomHttpPattern custom = 8;
+  }
+}
+
+// A custom pattern is used for defining custom HTTP verbs.
+message CustomHttpPattern {
+  // The name of this custom HTTP verb.
+  string kind = 1;
+
+  // The path template. The syntax is the same as defined in [HttpRule][].
+  string path = 2;
+}

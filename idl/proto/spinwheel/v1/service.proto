@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package spinwheel.v1;
+
+import "google/protobuf/timestamp.proto";
+import "idl/proto/spinwheel/v1/wheel.proto";
+
+option go_package = "spinwheel/backend/gen/proto/spinwheel/v1;spinwheelv1";
+
+service WheelService {
+  rpc CreateWheel(CreateWheelRequest) returns (CreateWheelResponse) {}
+
+  rpc GetWheel(GetWheelRequest) returns (GetWheelResponse) {}
+
+  rpc ListWheels(ListWheelsRequest) returns (ListWheelsResponse) {}
+
+  rpc UpdateWheel(UpdateWheelRequest) returns (UpdateWheelResponse) {}
+
+  rpc DeleteWheel(DeleteWheelRequest) returns (DeleteWheelResponse) {}
+
+  rpc AddItem(AddItemRequest) returns (AddItemResponse) {}
+
+  rpc UpdateItem(UpdateItemRequest) returns (UpdateItemResponse) {}
+
+  rpc DeleteItem(DeleteItemRequest) returns (DeleteItemResponse) {}
+
+  rpc SpinWheel(SpinWheelRequest) returns (SpinWheelResponse) {}
+
+  rpc GetSpinHistory(GetSpinHistoryRequest) returns (GetSpinHistoryResponse) {}
+}
+
+// Request/Response messages
+message CreateWheelRequest {
+  string name = 1;
+  Theme theme = 2;
+  repeated string initial_items = 3;
+}
+
+message CreateWheelResponse {
+  Wheel wheel = 1;
+}
+
+message GetWheelRequest {
+  string id = 1;
+}
+
+message GetWheelResponse {
+  Wheel wheel = 1;
+}
+
+message ListWheelsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListWheelsResponse {
+  repeated Wheel wheels = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message UpdateWheelRequest {
+  Wheel wheel = 1;
+}
+
+message UpdateWheelResponse {
+  Wheel wheel = 1;
+}
+
+message DeleteWheelRequest {
+  string id = 1;
+}
+
+message DeleteWheelResponse {}
+
+message AddItemRequest {
+  string wheel_id = 1;
+  string option = 2;
+  string color = 3;
+  double weight = 4;
+}
+
+message AddItemResponse {
+  WheelItem item = 1;
+}
+
+message UpdateItemRequest {
+  string wheel_id = 1;
+  WheelItem item = 2;
+}
+
+message UpdateItemResponse {
+  WheelItem item = 1;
+}
+
+message DeleteItemRequest {
+  string wheel_id = 1;
+  string item_id = 2;
+}
+
+message DeleteItemResponse {}
+
+message SpinWheelRequest {
+  string wheel_id = 1;
+  int64 seed = 2;  // Optional: for deterministic testing
+}
+
+message SpinResult {
+  string id = 1;
+  string wheel_id = 2;
+  WheelItem selected_item = 3;
+  string user_id = 4;
+  google.protobuf.Timestamp spun_at = 5;
+}
+
+message SpinWheelResponse {
+  SpinResult result = 1;
+}
+
+message GetSpinHistoryRequest {
+  string wheel_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message GetSpinHistoryResponse {
+  repeated SpinResult results = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}

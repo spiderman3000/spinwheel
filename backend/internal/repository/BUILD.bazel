@@ -1,0 +1,9 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "repository",
+    srcs = ["wheel.go"],
+    importpath = "spinwheel/backend/internal/repository",
+    visibility = ["//backend:__subpackages__"],
+    deps = ["//backend/pkg/models"],
+)

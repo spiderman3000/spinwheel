@@ -1,0 +1,4 @@
+bazel-*
+.git
+node_modules
+frontend

@@ -1,0 +1,18 @@
+module(
+    name = "spinwheel",
+    version = "1.0.0",
+)
+
+bazel_dep(name = "rules_go", version = "0.59.0")
+bazel_dep(name = "gazelle", version = "0.47.0")
+bazel_dep(name = "protobuf", version = "33.1")
+bazel_dep(name = "rules_proto_grpc", version = "5.8.0")
+
+# Configure Go dependencies from go.mod
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//backend:go.mod")
+use_repo(
+    go_deps,
+    "org_golang_google_grpc",
+    "org_uber_go_zap",
+)

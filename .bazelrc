@@ -1,0 +1,6 @@
+# Enable Bzlmod for external dependency management
+common --enable_bzlmod
+
+# C++ standard for protobuf/abseil-cpp compatibility
+build --cxxopt=-std=c++17
+build --host_cxxopt=-std=c++17

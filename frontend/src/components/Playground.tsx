@@ -13,11 +13,16 @@ interface PlaygroundProps {
 const Playground = ({ items, addItem, deleteItem, isDarkMode }: PlaygroundProps) => {
     return (
         <div className="playground">
-            <div className="sidebar">
-                <AddItemForm addItem={addItem} />
-                <ItemList items={items} deleteItem={deleteItem} />
+            <h1 id="playground-heading" className="playground-heading">
+                Random spin wheel — add options and spin to pick one
+            </h1>
+            <div className="playground-body">
+                <div className="sidebar">
+                    <AddItemForm addItem={addItem} />
+                    <ItemList items={items} deleteItem={deleteItem} />
+                </div>
+                <Wheel items={items} isDarkMode={isDarkMode} />
             </div>
-            <Wheel items={items} isDarkMode={isDarkMode} />
         </div>
     );
 };

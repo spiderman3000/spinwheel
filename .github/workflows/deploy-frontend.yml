@@ -45,6 +45,9 @@ jobs:
         working-directory: ./frontend
         env:
           NODE_ENV: production
+          # Public site URL (no trailing slash): canonical, Open Graph URL, sitemap, JSON-LD.
+          # Set repository variable SITE_URL (Settings → Secrets and variables → Actions → Variables).
+          VITE_SITE_URL: ${{ vars.SITE_URL }}
           # Remove VITE_API_URL if using GitHub Pages with no backend
           # Or set it to your deployed backend URL
           VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://your-backend.com/v1' }}

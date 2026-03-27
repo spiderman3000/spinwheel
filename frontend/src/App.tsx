@@ -55,7 +55,7 @@ function App() {
   return (
     <div className="app-container">
       <Navbar isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
-      <main className="main-content">
+      <main className="main-content" aria-labelledby="playground-heading">
         <Playground items={items} addItem={addItem} deleteItem={deleteItem} isDarkMode={isDarkMode} />
       </main>
     </div>

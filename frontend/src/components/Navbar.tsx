@@ -5,8 +5,10 @@ interface NavbarProps {
 
 const Navbar = ({ isDarkMode, toggleTheme }: NavbarProps) => {
     return (
-        <nav className="navbar">
-            <div className="logo">SpinWheel</div>
+        <nav className="navbar" aria-label="Main">
+            <a className="logo" href={import.meta.env.BASE_URL}>
+                SpinWheel
+            </a>
             <button
                 onClick={toggleTheme}
                 className="theme-toggle"

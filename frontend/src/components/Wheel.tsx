@@ -29,6 +29,7 @@ function truncateToWidth(
 }
 
 const Wheel = ({ items, isDarkMode }: WheelProps) => {
+    const wrapperRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rotationRef = useRef(0);
     const rafRef = useRef<number>(0);
@@ -42,20 +43,26 @@ const Wheel = ({ items, isDarkMode }: WheelProps) => {
     const drawWheel = useCallback(
         (rotation: number) => {
             const canvas = canvasRef.current;
-            if (!canvas) return;
+            const wrapper = wrapperRef.current;
+            if (!canvas || !wrapper) return;
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
 
+            const displayCssPx = Math.max(
+                1,
+                Math.floor(wrapper.getBoundingClientRect().width),
+            );
             const dpr = window.devicePixelRatio || 1;
-            const size = LOGICAL_SIZE;
-            if (canvas.width !== size * dpr || canvas.height !== size * dpr) {
-                canvas.width = size * dpr;
-                canvas.height = size * dpr;
-                canvas.style.width = `${size}px`;
-                canvas.style.height = `${size}px`;
+            const bitmapSize = Math.max(1, Math.round(displayCssPx * dpr));
+            if (canvas.width !== bitmapSize || canvas.height !== bitmapSize) {
+                canvas.width = bitmapSize;
+                canvas.height = bitmapSize;
             }
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            // Draw in LOGICAL_SIZE space; scale to the actual backing-store pixels (sharp on retina).
+            const scale = bitmapSize / LOGICAL_SIZE;
+            ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
+            const size = LOGICAL_SIZE;
             const center = size / 2;
             const radius = size / 2 - 14;
             const hubR = 22;
@@ -250,6 +257,16 @@ const Wheel = ({ items, isDarkMode }: WheelProps) => {
     }, [drawWheel, items, isDarkMode]);
 
     useEffect(() => {
+        const wrap = wrapperRef.current;
+        if (!wrap || typeof ResizeObserver === 'undefined') return;
+        const ro = new ResizeObserver(() => {
+            drawWheel(rotationRef.current);
+        });
+        ro.observe(wrap);
+        return () => ro.disconnect();
+    }, [drawWheel]);
+
+    useEffect(() => {
         return () => {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
         };
@@ -293,13 +310,8 @@ const Wheel = ({ items, isDarkMode }: WheelProps) => {
 
     return (
         <div className={`wheel-container${isSpinning ? ' wheel-container--spinning' : ''}`}>
-            <div className="wheel-wrapper">
-                <canvas
-                    ref={canvasRef}
-                    className="wheel-canvas"
-                    width={LOGICAL_SIZE}
-                    height={LOGICAL_SIZE}
-                />
+            <div className="wheel-wrapper" ref={wrapperRef}>
+                <canvas ref={canvasRef} className="wheel-canvas" />
             </div>
 
             {winner && (

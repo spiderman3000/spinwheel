@@ -135,6 +135,8 @@ button {
   margin: 0;
   color: var(--text-primary);
   letter-spacing: -0.02em;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 
 .playground-body {
@@ -307,6 +309,7 @@ input:focus {
   position: relative;
   width: 100%;
   max-width: min(400px, 92vw);
+  min-width: 0;
   aspect-ratio: 1;
   touch-action: manipulation;
   filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.12))

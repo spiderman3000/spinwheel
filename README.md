@@ -23,7 +23,7 @@ npm install
 npm run dev
 \`\`\`
 
-### Backend
+### Backend - Unimplemented
 \`\`\`bash
 bazel run //backend/cmd/server:server
 \`\`\`

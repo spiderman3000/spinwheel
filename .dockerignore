@@ -1,4 +1,10 @@
-bazel-*
 .git
-node_modules
-frontend
+.github
+frontend/node_modules
+frontend/dist
+bazel-*
+*.md
+LICENSE
+CONTRIBUTING.md
+SECURITY.md
+Makefile

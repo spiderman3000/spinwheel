@@ -1,44 +1,41 @@
 # --- Stage 1: Build ---
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.23-bookworm AS builder
 
-# Install dependencies: Node.js/npm (for Bazelisk), Java (for Bazel), protobuf compiler, and git
+# Install protoc and git
 RUN apt-get update && apt-get install -y \
-    nodejs npm \
-    default-jre-headless \
     protobuf-compiler \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Bazelisk (Bazel wrapper)
-RUN npm install -g @bazel/bazelisk
+# Install Go proto plugins
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
-# Setup workspace
 WORKDIR /src
 COPY . .
 
-# Generate go.sum if it doesn't exist (required by Bazel)
-RUN cd backend && go mod tidy
+# Generate Go code from proto files
+RUN mkdir -p backend/gen/proto/spinwheel/v1
+RUN protoc \
+    --go_out=backend --go_opt=module=spinwheel/backend \
+    --go-grpc_out=backend --go-grpc_opt=module=spinwheel/backend \
+    -I . \
+    idl/proto/spinwheel/v1/wheel.proto \
+    idl/proto/spinwheel/v1/service.proto
 
-# Build the backend server using Bazel
-# This automatically handles the .proto generation
-RUN bazelisk build //backend/cmd/server:server
+# Fix module path: imports use "spinwheel/backend/..." but go.mod says "module spinwheel"
+RUN sed -i 's/^module spinwheel$/module spinwheel\/backend/' backend/go.mod && \
+    cat backend/go.mod
 
-# Move the binary to a known location to make copying easier
-# The bazel output path is usually bazel-bin/backend/cmd/server/server_/server
-RUN cp bazel-bin/backend/cmd/server/server_/server /app_binary
+# Build
+RUN cd backend && go mod tidy && CGO_ENABLED=0 go build -o /server ./cmd/server
 
 # --- Stage 2: Runtime ---
-# Use a lightweight "distroless" image for security and size
 FROM gcr.io/distroless/base-debian12
 
-WORKDIR /
+COPY --from=builder /server /server
 
-# Copy the binary from the builder stage
-COPY --from=builder /app_binary /server
-
-# Cloud Run injects the PORT env var, but we expose 8080 as documentation
 ENV PORT=8080
 EXPOSE 8080
 
-# Run the binary
 CMD ["/server"]

@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "handler",
@@ -6,8 +6,28 @@ go_library(
     importpath = "spinwheel/backend/internal/handler",
     visibility = ["//backend:__subpackages__"],
     deps = [
+        "//backend/internal/middleware",
+        "//backend/internal/repository",
         "//backend/internal/service",
         "//backend/pkg/models",
         "//idl/proto/spinwheel/v1:spinwheel",
+        "@com_github_google_uuid//:uuid",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "handler_test",
+    srcs = ["wheel_test.go"],
+    embed = [":handler"],
+    deps = [
+        "//backend/internal/repository",
+        "//backend/internal/service",
+        "//backend/pkg/models",
+        "//idl/proto/spinwheel/v1:spinwheel",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
     ],
 )

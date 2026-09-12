@@ -1,6 +1,6 @@
 {
   "lockFileVersion": 6,
-  "moduleFileHash": "b8823d02f301439c30107eefa8250a2101f66836a183a46fdaea1f940379493e",
+  "moduleFileHash": "9fa4144bf35c335f0cecfa1a38a38b0a38b6bae86c554363c87cb8b5eb232bc2",
   "flags": {
     "cmdRegistries": [
       "https://bcr.bazel.build/"
@@ -37,6 +37,7 @@
             "com_github_google_uuid": "com_github_google_uuid",
             "com_github_jackc_pgx_v5": "com_github_jackc_pgx_v5",
             "org_golang_google_grpc": "org_golang_google_grpc",
+            "org_golang_google_protobuf": "org_golang_google_protobuf",
             "org_uber_go_zap": "org_uber_go_zap"
           },
           "devImports": [],

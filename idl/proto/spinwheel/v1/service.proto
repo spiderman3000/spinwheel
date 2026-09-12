@@ -7,6 +7,25 @@ import "idl/proto/spinwheel/v1/wheel.proto";
 
 option go_package = "spinwheel/backend/gen/proto/spinwheel/v1;spinwheelv1";
 
+// ---------------------------------------------------------------------------
+// WheelService — CONTRACT v1 (frozen 2026-09-12, SPI-7 step 0).
+//
+// Design: anon-first, no login. Identity = `sw_sid` cookie (HttpOnly,
+// SameSite=Lax, 1yr, UUIDv7) sent as `session_id` in events. The old
+// `x-user-id` gRPC metadata requirement is dropped (kept only as fallback
+// for grpcurl/tests). Future login adds `optional string user_id` without
+// breaking this contract.
+//
+// Two transports, one contract:
+//   gRPC (internal) : all rpcs below.
+//   HTTP/JSON (public, browser):
+//     POST /v1/wheels/{id}/spin {client_seed, items_hash} -> SpinWheelResponse
+//     POST /v1/events          RecordEventRequest -> 204
+//     GET  /healthz            -> 200
+// `ua / cf_ray / ip_hash` are NEVER client-supplied: HTTP gateway fills them
+// from headers (User-Agent, CF-Ray, hashed RemoteAddr). This is what makes
+// analytics deterministic even with JS/adblock quirks.
+// ---------------------------------------------------------------------------
 service WheelService {
   rpc CreateWheel(CreateWheelRequest) returns (CreateWheelResponse) {}
 
@@ -27,6 +46,9 @@ service WheelService {
   rpc SpinWheel(SpinWheelRequest) returns (SpinWheelResponse) {}
 
   rpc GetSpinHistory(GetSpinHistoryRequest) returns (GetSpinHistoryResponse) {}
+
+  // Analytics + funnel. Idempotent on (session_id, client_ts, type, spin_id).
+  rpc RecordEvent(RecordEventRequest) returns (RecordEventResponse) {}
 }
 
 // Request/Response messages
@@ -100,21 +122,73 @@ message DeleteItemRequest {
 
 message DeleteItemResponse {}
 
+// ---------------------------------------------------------------------------
+// SpinWheelRequest: server decides, client contributes entropy.
+// ---------------------------------------------------------------------------
 message SpinWheelRequest {
+  // Which wheel (DB PK, UUID). Required — no implicit "current wheel".
   string wheel_id = 1;
-  int64 seed = 2;  // Optional: for deterministic testing
+
+  // Deterministic-test seed. Honored only when ENVIRONMENT != production.
+  // Prod path ignores it and uses crypto/rand server seed instead.
+  int64 seed = 2;
+
+  // Client entropy: 16 bytes hex from crypto.getRandomValues().
+  // Combined as seed_server (32B crypto/rand, never revealed) + client_seed
+  // -> winner. Why: proves server did not pre-farm winners; enables
+  // provable-fairness audit later. Works anon — no user_id needed.
+  string client_seed = 3;
+
+  // sha256 of canonical item list client rendered:
+  //   sha256(join(sorted(item.id + "|" + option + "|" + weight + "|" + color), "\n"))
+  // Server recomputes from DB; mismatch -> FAILED_PRECONDITION(wheel_changed).
+  // Why: kills stale-client spins and forged custom item lists.
+  string items_hash = 4;
 }
 
+// DEPRECATED: winner-only wrapper kept for GetSpinHistory compat.
+// New SpinWheel callers use the flat SpinWheelResponse below.
 message SpinResult {
   string id = 1;
   string wheel_id = 2;
   WheelItem selected_item = 3;
+  // Anon mode: empty. Reserved for future login backfill (session->user link).
   string user_id = 4;
   google.protobuf.Timestamp spun_at = 5;
 }
 
+// ---------------------------------------------------------------------------
+// SpinWheelResponse: flat, positional, verifiable server decision.
+// ---------------------------------------------------------------------------
 message SpinWheelResponse {
-  SpinResult result = 1;
+  // Kept for backward compat with old clients; new clients ignore `result`
+  // and use the flat fields below.
+  SpinResult result = 1 [deprecated = true];
+
+  // UUIDv7, PK of spins row. Idempotency + join key for
+  // spin_start -> spin_end events and GetSpinHistory.
+  string spin_id = 2;
+
+  // 0-based index into server-canonical item order. FE animation target.
+  // Index (not option string) because options can duplicate ("Try again" x2).
+  int32 winner_index = 3;
+
+  // Full item {id, option, color, weight}. Avoids second fetch.
+  // NOTE: handler previously dropped `weight` — must map it through.
+  WheelItem winner_item = 4;
+
+  // 16B hex per-spin uniqueness. Makes sig unique on repeat winners.
+  string nonce = 5;
+
+  // Opaque to FE (no secret on client). Stored and echoed back in
+  // RecordEvent{spin_end}.sig / prize redeem; server re-verifies with
+  // HMAC_SECRET: HMAC_SHA256(spin_id|wheel_id|winner_idx|items_hash|nonce).
+  // Why HMAC not RSA: 1 env var, no key rotation; upgrade to Ed25519 if FE
+  // offline verification is ever needed.
+  string sig = 6;
+
+  // 60s TTL. FE checks clock; server enforces. Kills replay-a-win-forever.
+  google.protobuf.Timestamp expires_at = 7;
 }
 
 message GetSpinHistoryRequest {
@@ -128,3 +202,41 @@ message GetSpinHistoryResponse {
   string next_page_token = 2;
   int32 total_count = 3;
 }
+
+// ---------------------------------------------------------------------------
+// Analytics events: pageview -> spin_start -> spin_end funnel.
+// Anon identity = session_id (sw_sid cookie). No login required.
+// `ua / cf_ray / ip_hash` are server-filled from HTTP context, never trusted
+// from client body — JS-off hits are still logged by middleware.
+// ---------------------------------------------------------------------------
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  PAGEVIEW = 1;    // every page load, path set, wheel_id/spin_id empty
+  SPIN_START = 2;  // before POST /spin, wheel_id set
+  SPIN_END = 3;    // after animation, wheel_id + spin_id + sig set
+}
+
+message RecordEventRequest {
+  // Funnel stage. Required.
+  EventType type = 1;
+
+  // Set for SPIN_START/SPIN_END; empty for PAGEVIEW.
+  string wheel_id = 2;
+
+  // Set for SPIN_START/SPIN_END (== SpinWheelResponse.spin_id).
+  string spin_id = 3;
+
+  // e.g. /play/abc. Required for PAGEVIEW.
+  string path = 4;
+
+  // Anon session (sw_sid cookie, UUID). Required — this IS the identity.
+  string session_id = 5;
+
+  // SPIN_END only: echoes SpinWheelResponse.sig for win-claim verification.
+  string sig = 6;
+
+  // Client clock for ordering; server also stamps received_at (skew detection).
+  google.protobuf.Timestamp client_ts = 7;
+}
+
+message RecordEventResponse {}

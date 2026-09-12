@@ -6,6 +6,12 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "spinwheel/backend/gen/proto/spinwheel/v1;spinwheelv1";
 
+// ---------------------------------------------------------------------------
+// Wheel model — CONTRACT v1 (frozen 2026-09-12, SPI-7 step 0).
+// Anon-first: no user_id on Wheel. Ownership (when login lands) is a
+// session_id -> user_id link table, not a field here.
+// ---------------------------------------------------------------------------
+
 enum Theme {
   THEME_UNSPECIFIED = 0;
   THEME_LIGHT = 1;
@@ -13,20 +19,42 @@ enum Theme {
 }
 
 message Wheel {
+  // UUIDv7 PK. Never sequential (no enumeration).
   string id = 1;
+
+  // Display name. Required on Create.
   string name = 2;
+
+  // Reserved for future login owner. Always empty in anon mode — use
+  // RecordEvent.session_id for funnel joins instead.
   string user_id = 3;
+
+  // Server-canonical order. winner_index in SpinWheelResponse indexes this
+  // exact order — FE must not re-sort before animating.
   repeated WheelItem items = 4;
+
   Theme theme = 5;
+
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
 }
 
 message WheelItem {
+  // UUIDv7 PK.
   string id = 1;
-  string option = 2;  // Renamed from 'text' to match docs
+
+  // Display label. Duplicates allowed — hence winner_index, not option match.
+  string option = 2;
+
   string wheel_id = 3;
+
+  // Relative probability. Default 1.0 when unset/<=0. Server picks via
+  // crypto/rand weighted draw. MUST be mapped through handler (it was
+  // previously dropped) or weighted spins silently become uniform.
   double weight = 4;
+
+  // Hex CSS color, e.g. "#ff5566". Purely presentational.
   string color = 5;
+
   google.protobuf.Timestamp created_at = 6;
 }

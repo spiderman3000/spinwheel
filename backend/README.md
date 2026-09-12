@@ -65,6 +65,64 @@ If lib/pq rejects `channel_binding`, retry with `&channel_binding=require` strip
 
 **Ops notes:** prune `spins/pageviews >90d` (else 0.5GB fills and writes fail); `HMAC_SECRET` via env; `go.mod` stays clean — add `pgx/v5` + `google/uuid` deliberately with `postgres.go`, not via throwaway `go get`.
 
+## Spin + event flows (SPI-7 steps 1-2)
+
+GitHub renders the Mermaid blocks below as diagram images.
+
+### Secure spin — who writes what, and how the `spins` row changes state
+
+```mermaid
+sequenceDiagram
+    participant FE as Browser / FE
+    participant SVC as Service (SpinWheelSecure)
+    participant DB as Neon (spins row)
+    FE->>SVC: SpinWheel {wheel_id, client_seed, items_hash}
+    SVC->>DB: RecordSpin: INSERT spins (...)
+    Note over DB: id=uuid, winner_idx, winner_item_id,<br/>seed_server=32B (never revealed),<br/>seed_client, items_hash, nonce=16B hex,<br/>sig='', expires_at=now+60s
+    SVC->>SVC: sig = HMAC(secret,<br/>spin_id|wheel_id|idx|hash|nonce)
+    SVC->>DB: UpdateSpinSig: UPDATE spins SET sig
+    Note over DB: sig: '' → 'a3f9…64hex'
+    SVC->>FE: {spin_id, winner_index, winner_item,<br/>nonce, sig, expires_at}
+    FE->>SVC: RecordEvent SPIN_END {spin_id, sig}
+    SVC->>DB: INSERT pageviews (idempotent)
+    SVC->>SVC: VerifySpin → prize accept / reject
+```
+
+### `spins` row lifecycle (state diagram)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Decided: RecordSpin INSERT<br/>sig = '' (unsigned)
+    Decided --> Signed: UpdateSpinSig<br/>sig = HMAC_SHA256(...)
+    Signed --> Verified: VerifySpin OK<br/>(+ not expired)
+    Signed --> Rejected: sig mismatch<br/>or expires_at passed
+    Verified --> [*]: prize claimable
+    Rejected --> [*]: claim denied
+```
+
+### Field transitions per stage
+
+| Stage | `sig` | `seed_server` | `nonce` | `winner_idx` / `winner_item_id` | `expires_at` |
+|---|---|---|---|---|---|
+| `RecordSpin` INSERT | `''` (unsigned) | 32B `crypto/rand`, never leaves server | 16B hex, unique per spin | decided by weighted draw, locked via `SELECT … FOR UPDATE` | `now + 60s` |
+| `UpdateSpinSig` | `''` → `HMAC(secret, spin_id\|wheel_id\|idx\|hash\|nonce)` | unchanged | unchanged | unchanged | unchanged |
+| `SpinWheelResponse` → FE | echoed (opaque to FE) | never sent | echoed (makes sig unique on repeat winners) | `winner_index` drives animation; full item avoids refetch | FE checks clock |
+| `RecordEvent` SPIN_END | echoed back, re-verified | — | echoed | joined via `spin_id` | server enforces (kills replays) |
+| Item edited/deleted later | stays verifiable (`items_hash` pins the list the spin was drawn from) | unchanged | unchanged | `winner_item_id → NULL` (`ON DELETE SET NULL`); `winner_idx` preserved | unchanged |
+
+### Analytics funnel — `pageviews` rows (one row per event, idempotent)
+
+```mermaid
+flowchart LR
+    PV["PAGEVIEW<br/>path=/play/abc<br/>wheel_id='', spin_id=NULL"] --> SS["SPIN_START<br/>wheel_id set<br/>spin_id = spin from POST /spin"]
+    SS --> SE["SPIN_END<br/>wheel_id + spin_id + sig<br/>sig re-verified"]
+    PV -.->|redelivery same<br/>session+type+client_ts+spin| PV
+    SS -.->|ON CONFLICT DO NOTHING<br/>returns stored row| SS
+    SE -.->|ON CONFLICT DO NOTHING<br/>returns stored row| SE
+```
+
+Idempotency key: `(session_id, type, client_ts, spin_id)` — `UNIQUE pageviews_idempotency_uniq`. `ua / cf_ray / ip_hash` are server-filled from HTTP context, never trusted from the client body.
+
 ## Testing the API
 
 The backend provides a gRPC API. You can test it using `grpcurl`:
@@ -88,7 +146,7 @@ grpcurl -plaintext -H "x-user-id: test-user" \
 - `cmd/server/main.go`: Entry point for the backend server.
 - `internal/handler`: gRPC handlers processing incoming requests.
 - `internal/service`: Core business logic.
-- `internal/repository`: Data access layer (`InMemoryWheelRepository` for tests/dev; `migrations/` holds the Neon Postgres schema, `PostgresWheelRepository` is next per SPI-7 step 1).
+- `internal/repository`: Data access layer (`InMemoryWheelRepository` for tests/dev; `PostgresWheelRepository` on Neon + `migrations/`, SPI-7 step 1 done).
 - `pkg/models`: Core data structures.
 - `gen/proto`: Generated Go code from `.proto` files.
 

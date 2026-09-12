@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS pageviews;
+DROP TABLE IF EXISTS spins;
+DROP TABLE IF EXISTS wheel_items;
+DROP TABLE IF EXISTS wheels;
+DROP FUNCTION IF EXISTS set_updated_at();

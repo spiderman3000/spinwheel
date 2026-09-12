@@ -2,21 +2,25 @@ package middleware
 
 import (
 	"context"
+
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 type userIDKey struct{}
 
-// UserIDFromContext retrieves the user ID from context
+// UserIDFromContext retrieves the optional user ID from context.
 func UserIDFromContext(ctx context.Context) (string, bool) {
 	userID, ok := ctx.Value(userIDKey{}).(string)
 	return userID, ok
 }
 
-// UserIDInterceptor extracts X-User-Id from metadata
+// UserIDInterceptor attaches X-User-Id to the context when present.
+//
+// Anon-first (contract v1): the header is an optional fallback for
+// grpcurl/tests — requests without it proceed anonymously instead of
+// being rejected. The canonical anon identity is the sw_sid cookie,
+// resolved by the HTTP gateway.
 func UserIDInterceptor() grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -24,19 +28,11 @@ func UserIDInterceptor() grpc.UnaryServerInterceptor {
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		md, ok := metadata.FromIncomingContext(ctx)
-		if !ok {
-			return nil, status.Error(codes.Unauthenticated, "missing metadata")
+		if md, ok := metadata.FromIncomingContext(ctx); ok {
+			if ids := md.Get("x-user-id"); len(ids) > 0 && ids[0] != "" {
+				ctx = context.WithValue(ctx, userIDKey{}, ids[0])
+			}
 		}
-
-		userIDs := md.Get("x-user-id")
-		if len(userIDs) == 0 {
-			return nil, status.Error(codes.Unauthenticated, "missing x-user-id header")
-		}
-
-		// Add user ID to context
-		ctx = context.WithValue(ctx, userIDKey{}, userIDs[0])
-		
 		return handler(ctx, req)
 	}
 }

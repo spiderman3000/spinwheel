@@ -1,0 +1,33 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "http",
+    srcs = [
+        "events.go",
+        "middleware.go",
+        "server.go",
+        "session.go",
+        "spin.go",
+    ],
+    importpath = "spinwheel/backend/internal/http",
+    visibility = ["//backend:__subpackages__"],
+    deps = [
+        "//backend/internal/middleware",
+        "//backend/internal/repository",
+        "//backend/internal/service",
+        "//backend/pkg/models",
+        "@com_github_google_uuid//:uuid",
+        "@org_uber_go_zap//:zap",
+    ],
+)
+
+go_test(
+    name = "http_test",
+    srcs = ["server_test.go"],
+    embed = [":http"],
+    deps = [
+        "//backend/internal/repository",
+        "//backend/internal/service",
+        "//backend/pkg/models",
+    ],
+)

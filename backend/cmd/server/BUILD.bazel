@@ -6,15 +6,11 @@ go_library(
     importpath = "spinwheel/backend/cmd/server",
     visibility = ["//visibility:private"],
     deps = [
-        "//backend/internal/handler",
-        "//backend/internal/middleware",
+        "//backend/internal/http",
         "//backend/internal/repository",
         "//backend/internal/service",
         "//backend/pkg/logger",
-        "//idl/proto/spinwheel/v1:spinwheel",
-        "@org_golang_google_grpc//:grpc",
-        "@org_golang_google_grpc//credentials/insecure",
-        "@org_golang_google_grpc//reflection",
+        "//backend/pkg/models",
         "@org_uber_go_zap//:zap",
     ],
 )

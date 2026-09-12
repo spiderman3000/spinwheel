@@ -1,9 +1,31 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "repository",
-    srcs = ["wheel.go"],
+    srcs = [
+        "postgres.go",
+        "wheel.go",
+    ],
     importpath = "spinwheel/backend/internal/repository",
     visibility = ["//backend:__subpackages__"],
-    deps = ["//backend/pkg/models"],
+    deps = [
+        "//backend/pkg/models",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_jackc_pgx_v5//:pgx",
+        "@com_github_jackc_pgx_v5//pgtype",
+        "@com_github_jackc_pgx_v5//pgxpool",
+    ],
+)
+
+go_test(
+    name = "repository_test",
+    srcs = [
+        "postgres_test.go",
+        "wheel_test.go",
+    ],
+    embed = [":repository"],
+    deps = [
+        "//backend/pkg/models",
+        "@com_github_google_uuid//:uuid",
+    ],
 )

@@ -31,8 +31,8 @@ func main() {
 	// Create a new in-memory repository
 	repo := repository.NewInMemoryWheelRepository()
 
-	// Create a new service
-	serv := service.NewWheelService(repo)
+	// Create a new service (HMAC_SECRET wiring lands fully in step 5)
+	serv := service.NewWheelService(repo, os.Getenv("HMAC_SECRET"))
 
 	// Create a new handler
 	hand := handler.NewWheelHandler(serv)

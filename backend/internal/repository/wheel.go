@@ -42,6 +42,8 @@ type WheelRepository interface {
 	SpinWheel(id string) (*models.WheelItem, error)
 	// RecordSpin draws a winner and persists the decision audit row.
 	RecordSpin(ctx context.Context, params models.SpinParams) (*models.SpinRecord, error)
+	// UpdateSpinSig attaches the service-computed HMAC to a stored spin.
+	UpdateSpinSig(ctx context.Context, spinID string, sig string) error
 	// ListSpins returns persisted spins newest-first, capped at limit
 	// (default spinHistoryLimit, max maxSpinHistoryLimit).
 	ListSpins(ctx context.Context, wheelID string, limit int) ([]*models.SpinRecord, error)
@@ -248,6 +250,18 @@ func (r *InMemoryWheelRepository) RecordSpin(ctx context.Context, params models.
 	return record, nil
 }
 
+func (r *InMemoryWheelRepository) UpdateSpinSig(ctx context.Context, spinID string, sig string) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	spin, ok := r.spins[spinID]
+	if !ok {
+		return ErrNotFound
+	}
+	spin.Sig = sig
+	return nil
+}
+
 func (r *InMemoryWheelRepository) ListSpins(ctx context.Context, wheelID string, limit int) ([]*models.SpinRecord, error) {
 	_ = ctx
 
@@ -281,7 +295,6 @@ func (r *InMemoryWheelRepository) ListSpins(ctx context.Context, wheelID string,
 }
 
 func (r *InMemoryWheelRepository) RecordEvent(ctx context.Context, params models.EventParams) (*models.EventRecord, error) {
-	_ = ctx
 
 	clientTS := params.ClientTS
 	if clientTS.IsZero() {

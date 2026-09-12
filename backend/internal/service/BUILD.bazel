@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "service",
@@ -8,5 +8,16 @@ go_library(
     deps = [
         "//backend/internal/repository",
         "//backend/pkg/models",
+    ],
+)
+
+go_test(
+    name = "service_test",
+    srcs = ["wheel_test.go"],
+    embed = [":service"],
+    deps = [
+        "//backend/internal/repository",
+        "//backend/pkg/models",
+        "@com_github_google_uuid//:uuid",
     ],
 )

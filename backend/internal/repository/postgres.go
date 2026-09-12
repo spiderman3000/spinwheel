@@ -362,6 +362,21 @@ func (r *PostgresWheelRepository) RecordSpin(ctx context.Context, params models.
 	return record, nil
 }
 
+func (r *PostgresWheelRepository) UpdateSpinSig(ctx context.Context, spinID string, sig string) error {
+	spinUUID, err := toPGUUID(spinID)
+	if err != nil {
+		return err
+	}
+	tag, err := r.pool.Exec(ctx, `UPDATE spins SET sig = $2 WHERE id = $1`, spinUUID, sig)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *PostgresWheelRepository) ListSpins(ctx context.Context, wheelID string, limit int) ([]*models.SpinRecord, error) {
 	wheelUUID, err := toPGUUID(wheelID)
 	if err != nil {

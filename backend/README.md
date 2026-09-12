@@ -205,9 +205,89 @@ Three things to remember:
 2. **Some fields are signed.** `WheelID` and `ItemsHash` (with spin ID, winner index, nonce) go into the HMAC — tampering with any of them invalidates `sig`.
 3. **Anon-first privacy.** No names, emails, or raw IPs anywhere: random session IDs plus an irreversible IP hash.
 
+## HTTP API (SPI-7 step 4)
+
+HTTP is the **only public API**. The gRPC service still exists in code
+(`internal/handler`) but is not served — exposing it is backlog for later.
+Everything a browser needs is three routes (package `internal/http`,
+stdlib-only, no framework):
+
+| Method | Path | Success | Notes |
+| ------ | ---- | ------- | ----- |
+| `GET` | `/healthz` | `200 {"status":"ok"}` | Cloud Run health checks. |
+| `POST` | `/v1/wheels/{id}/spin` | `200` spin JSON (below) | Body `{client_seed, items_hash}`. |
+| `POST` | `/v1/events` | `204` empty | Body `{type, wheel_id?, spin_id?, path?, sig?, session_id?, client_ts?}`. |
+
+```bash
+# Health
+curl localhost:8080/healthz
+
+# Spin (items_hash comes from GET wheel data — the server rejects
+# empty/stale hashes with 400 wheel_changed so the FE refreshes first)
+curl -c jar -X POST localhost:8080/v1/wheels/$WHEEL_ID/spin \
+  -H 'Content-Type: application/json' \
+  -d '{"client_seed":"abc","items_hash":"<hash>"}'
+# -> {"spin_id":"…","winner_index":1,"winner_item":{…},"nonce":"…","sig":"…","expires_at":"…"}
+# The -c jar stores the sw_sid session cookie for subsequent calls.
+
+# Analytics event
+curl -b jar -X POST localhost:8080/v1/events \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"PAGEVIEW","path":"/play/abc"}'
+# -> 204, empty body (redelivery is a no-op, not an error)
+```
+
+### Sessions (`sw_sid` cookie)
+
+Anon identity, resolved per request: a **valid cookie wins**, then an
+explicit `session_id` in the JSON body (adopted + set as cookie), else a
+fresh UUIDv7. Attributes: `HttpOnly`, `Path=/`, `SameSite=Lax`, 1 year,
+`Secure` in production. Malformed cookies are treated as absent (a bad
+cookie can never wedge a client) and valid cookies are never rotated.
+
+> Cross-site caveat: FE (Cloudflare Pages) × API (Cloud Run) are different
+> origins, so browsers will **not** send a `Lax` cookie on cross-site
+> `fetch`. Continuity then relies on the FE echoing `session_id` in request
+> bodies (or a first-party API hostname — decision open in SPI-8).
+
+### Errors
+
+JSON body `{"error":"…"}` with a status:
+
+| Status | Meaning |
+| ------ | ------- |
+| `400` | Bad JSON, bad `wheel_id`/`spin_id`/`client_ts`, missing event type, or `wheel_changed` (empty/stale `items_hash` — refresh the wheel and retry). |
+| `404` | Unknown wheel / unknown route. |
+| `405` | Wrong method. |
+| `413` | Body over 1MB. |
+| `429` | Over the rate limit — carries `Retry-After: 60`. |
+| `500` | Internal error (logged server-side with `cf_ray`). |
+
+### Limits, CORS, attribution
+
+- **Rate limit:** 100 req/min per `IP + session` (configurable, disabled
+  with `<= 0`). In-memory per instance — the effective limit scales with
+  instance count (fine at max 3).
+- **CORS:** allowlist only (`CORS_ORIGINS`). Allowed origins get an
+  explicit echo + `Allow-Credentials: true` (the cookie is credentialed);
+  anything else gets no CORS headers. Preflights (`OPTIONS`) return 204
+  before rate limiting and logging.
+- **Attribution:** spins/events store `ip_hash` (SHA-256 — raw IPs are
+  never persisted), `Cf-Ray`, and UA. Access logs carry
+  method/path/status/latency + `ip_hash`/`ua`/`cf_ray`; spins add a
+  `spin_id`/`cf_ray` line. Client IP trusts `CF-Connecting-IP`, then the
+  leftmost `X-Forwarded-For`, then the connection address.
+- **Bodies** are capped at 1MB (`http.MaxBytesReader` + `ContentLength`
+  fast-path).
+
 ## Testing the API
 
-The backend provides a gRPC API. You can test it using `grpcurl`:
+The public API is HTTP — see [HTTP API](#http-api-spi-7-step-4) above for
+`curl` examples (`/healthz`, spin, events).
+
+The gRPC service is internal/backlog (not served). If you re-enable it
+locally, `grpcurl` works without any auth headers — `x-user-id` is now
+optional (anon-first) and only acts as a grpcurl/test fallback:
 
 **List available services:**
 ```bash
@@ -216,17 +296,17 @@ grpcurl -plaintext localhost:50051 list
 
 **Create a wheel:**
 ```bash
-grpcurl -plaintext -H "x-user-id: test-user" \
+grpcurl -plaintext \
   -d '{"name": "Test Wheel", "initial_items": ["Option 1", "Option 2", "Option 3"]}' \
   localhost:50051 spinwheel.v1.WheelService/CreateWheel
 ```
 
-**Note:** The `x-user-id` header is required by the UserIDInterceptor middleware for local development.
-
 ## Code Structure
 
-- `cmd/server/main.go`: Entry point for the backend server.
-- `internal/handler`: gRPC handlers processing incoming requests.
+- `cmd/server/main.go`: Entry point for the backend server (HTTP-only; gRPC serving is backlog).
+- `internal/http`: Public JSON gateway (`/healthz`, spin, events) + `sw_sid` sessions, CORS, rate limiting, request logging.
+- `internal/handler`: gRPC handlers (built and unit-tested, but not currently served).
+- `internal/middleware`: Optional `x-user-id` attach + exported IP+session rate `Limiter`.
 - `internal/service`: Core business logic.
 - `internal/repository`: Data access layer (`InMemoryWheelRepository` for tests/dev; `PostgresWheelRepository` on Neon + `migrations/`, SPI-7 step 1 done).
 - `pkg/models`: Core data structures.
@@ -238,6 +318,6 @@ The frontend is a lightweight **Preact** application located in the `/frontend` 
 
 ## Security Considerations
 
-- **Development:** Never commit `.env` files. The `X-User-Id` header is for local testing only.
-- **Production:** Replace `X-User-Id` with JWT authentication, enable HTTPS, and use environment variables for sensitive data.
-- **Rate Limiting:** Default is set to 100 req/min per user.
+- **Development:** Never commit `.env` files. `X-User-Id` is an optional local-testing fallback, never a credential.
+- **Production:** Enable HTTPS, and use environment variables for sensitive data (`HMAC_SECRET`, `DATABASE_URL`).
+- **Rate Limiting:** Default is 100 req/min per IP+session (see HTTP API).

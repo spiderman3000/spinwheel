@@ -1,0 +1,31 @@
+# Buf workspace config (SPI-7 fragility fix).
+#
+# This file lives at the repo root on purpose: service.proto imports
+# "idl/proto/spinwheel/v1/wheel.proto" (repo-root-relative), so the
+# compiler root must be "." — same as the old `protoc -I .` invocation.
+# Do NOT move this into idl/proto/ without also rewriting that import
+# (and the Bazel proto_library, which resolves the same long path).
+version: v1
+build:
+  # Bazel output symlinks live in the repo root; keep buf from walking them.
+  excludes:
+    - bazel-bin
+    - bazel-out
+    - bazel-spinwheel
+    - bazel-testlogs
+    - bazel-runfiles
+    # Vendored third-party protos (Bazel-managed, different import convention);
+    # not part of our contract and never imported by spinwheel protos.
+    - idl/proto/google/api
+lint:
+  use:
+    - DEFAULT
+  except:
+    # Contract v1 is frozen (SPI-7): directory layout is repo-root-relative
+    # (matches `protoc -I .` history and Bazel proto_library) and EventType
+    # values are PAGEVIEW/SPIN_START/SPIN_END. Revisit in v2.
+    - PACKAGE_DIRECTORY_MATCH
+    - ENUM_VALUE_PREFIX
+breaking:
+  use:
+    - FILE

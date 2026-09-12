@@ -1,4 +1,4 @@
-module spinwheel
+module spinwheel/backend
 
 go 1.21
 

@@ -54,4 +54,4 @@ CORS: `yourdomain.com` only. Body limit 1MB. Rate limit `100/min` by `IP+session
 
 ## Versioning
 
-v1 frozen. Changes = new fields only (never renumber). Breaking change → `v2` package + 3-month dual-serve. Regenerate via `buf generate` (or `protoc -I . idl/proto/spinwheel/v1/*.proto`).
+v1 frozen. Changes = new fields only (never renumber). Breaking change → `v2` package + 3-month dual-serve. Regenerate via `buf generate` from the repo root (toolchain pinned in `Dockerfile`, config in `buf.yaml`/`buf.gen.yaml`). Check compat with `buf breaking --against '.git#branch=main'`.

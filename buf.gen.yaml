@@ -1,0 +1,21 @@
+# Codegen config (SPI-7 fragility fix).
+#
+# Replicates the old Dockerfile `protoc` flags exactly:
+#   --go_out=backend --go_opt=module=spinwheel/backend
+#   --go-grpc_out=backend --go-grpc_opt=module=spinwheel/backend
+# but runs under `buf generate`, which bundles protoc itself — so no
+# apt `protobuf-compiler` version drift. Plugin binaries must be on PATH;
+# versions are pinned in the Dockerfile (never @latest).
+#
+# Usage:
+#   buf generate                      # from repo root, writes backend/gen/...
+#   buf lint                            # style/consistency checks
+#   buf breaking --against '.git#branch=main'   # contract-compat check
+version: v1
+plugins:
+  - name: go
+    out: backend
+    opt: module=spinwheel/backend
+  - name: go-grpc
+    out: backend
+    opt: module=spinwheel/backend

@@ -285,6 +285,88 @@ JSON body `{"error":"…"}` with a status:
 The public API is HTTP — see [HTTP API](#http-api-spi-7-step-4) above for
 `curl` examples (`/healthz`, spin, events).
 
+### Production smoke test (post-deploy runbook, SPI-7 step 6)
+
+Copy-paste against any deployment by setting `API` (no trailing slash).
+Every check below was verified green against Cloud Run on 2026-09-13.
+
+```bash
+API=https://spinwheel-raaxoahc7a-ue.a.run.app
+
+# 1. Health
+curl -sS -w '\nhealthz: %{http_code}\n' "$API/healthz"   # -> 200 {"status":"ok"}
+
+# 2. Create a wheel (201; proves DATABASE_URL + Neon wiring)
+curl -sS "$API/v1/wheels" -H 'Content-Type: application/json' -d '{
+  "name": "prod-seed",
+  "items": [
+    {"option": "A", "color": "#ff0000", "weight": 1},
+    {"option": "B", "color": "#00ff00", "weight": 1}
+  ]}' | tee /tmp/wheel.json
+
+# 3. Compute items_hash exactly per contract v1:
+#    sha256 of newline-joined sorted "id|option|weight|color" lines,
+#    weight in %g format (must match ComputeItemsHash — FE serializes identically)
+WHEEL_ID=$(python3 -c "import json; print(json.load(open('/tmp/wheel.json'))['id'])")
+ITEMS_HASH=$(python3 -c "
+import json, hashlib
+w = json.load(open('/tmp/wheel.json'))
+lines = sorted(f\"{i['id']}|{i['option']}|{float(i['weight']):g}|{i['color']}\" for i in w['items'])
+print(hashlib.sha256('\n'.join(lines).encode()).hexdigest())")
+
+# 4. Signed spin (200 spin_id/winner_index/nonce/sig/expires_at)
+curl -sS "$API/v1/wheels/$WHEEL_ID/spin" -H 'Content-Type: application/json' \
+  -d "{\"client_seed\": \"smoke-1\", \"items_hash\": \"$ITEMS_HASH\"}" | tee /tmp/spin.json
+
+# 5. Verify sig offline (constant-time compare; secret stays out of output).
+#    Local dev: HMAC_SECRET comes from /tmp/spin.env.
+#    Prod check: replace the source line with
+#      SECRET=$(gcloud secrets versions access latest --secret=HMAC_SECRET) && export HMAC_SECRET="$SECRET"
+source /tmp/spin.env   # exports HMAC_SECRET; no-op if already set
+SPIN_ID=$(python3 -c "import json; print(json.load(open('/tmp/spin.json'))['spin_id'])")
+IDX=$(python3 -c "import json; print(json.load(open('/tmp/spin.json'))['winner_index'])")
+NONCE=$(python3 -c "import json; print(json.load(open('/tmp/spin.json'))['nonce'])")
+SIG=$(python3 -c "import json; print(json.load(open('/tmp/spin.json'))['sig'])")
+python3 -c "
+import hmac, hashlib
+import os
+secret = os.environ['HMAC_SECRET']
+msg = f'$SPIN_ID|$WHEEL_ID|$IDX|$ITEMS_HASH|$NONCE'.encode()
+print('SIG:', 'OK' if hmac.compare_digest(
+    hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest(), '$SIG') else 'FAIL')"
+# Also assert expires_at is ~60s in the future.
+
+# 6. Analytics event (204, empty body; redelivery is a no-op)
+curl -sS -o /dev/null -w 'events: %{http_code}\n' "$API/v1/events" \
+  -H 'Content-Type: application/json' \
+  -d "{\"type\": \"PAGEVIEW\", \"path\": \"/\", \"wheel_id\": \"$WHEEL_ID\"}"
+
+# 7. Stale items_hash must fail closed (400 wheel_changed, nothing persisted)
+curl -sS -w '\ncode: %{http_code}\n' "$API/v1/wheels/$WHEEL_ID/spin" \
+  -H 'Content-Type: application/json' -d '{"client_seed": "x", "items_hash": "deadbeef"}'
+
+# 8. CORS preflight echoes the configured origin (see CORS_ORIGINS)
+curl -sS -o /dev/null -D - -X OPTIONS "$API/v1/events" \
+  -H 'Origin: https://spinwheels.fun' -H 'Access-Control-Request-Method: POST' \
+  | grep -i access-control-allow-origin
+
+# 9. Rows landed (DIRECT_URL only; never the pooled URL for psql/migrate)
+psql "$DIRECT_URL" -c \
+  "SELECT (SELECT count(*) FROM spins) AS spins, (SELECT count(*) FROM pageviews) AS pageviews;"
+```
+
+Known Cloud Run quirks (observed 2026-09-13, not blockers):
+
+- `gcloud run deploy` prints a stale-format URL
+  (`spinwheel-<project-number>.us-east1.run.app`); the canonical URL is the
+  `*.a.run.app` one from `gcloud run services describe`. Both route.
+- `GET /healthz` is shadowed at Google edge (HTML 404, never reaches the
+  container, absent from request logs) while every other path routes fine.
+  Prove liveness via the app routes above, not `/healthz`.
+- First `--source` deploy fails on IAM: the Compute default SA needs
+  `roles/cloudbuild.builds.builder`, `roles/storage.admin`, and
+  `roles/artifactregistry.writer` before Cloud Build can run.
+
 The gRPC service is internal/backlog (not served). If you re-enable it
 locally, `grpcurl` works without any auth headers — `x-user-id` is now
 optional (anon-first) and only acts as a grpcurl/test fallback:

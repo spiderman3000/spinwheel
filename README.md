@@ -1,5 +1,8 @@
 # Spinwheel
 
+> **Project Context & Ultimate Goal:**
+> The ultimate aim for this project is to create a production-ready product of Spinwheel that can handle live traffic. All technical decisions made during the creation of this project should be understood and documented with this goal in mind.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Build Status](https://github.com/yourusername/spinwheel/workflows/CI/badge.svg)](https://github.com/yourusername/spinwheel/actions)
 

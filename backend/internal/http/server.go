@@ -80,6 +80,7 @@ func NewServer(cfg Config) *Server {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/v1/wheels", s.handleCreateWheel)
 	mux.HandleFunc("/v1/wheels/", s.handleWheels)
 	mux.HandleFunc("/v1/events", s.handleEvents)
 
@@ -100,7 +101,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleWheels dispatches the /v1/wheels/ subtree (spin only for now).
+// handleWheels dispatches the /v1/wheels/ subtree: PUT /v1/wheels/{id}
+// syncs the item list, POST /v1/wheels/{id}/spin draws.
 func (s *Server) handleWheels(w http.ResponseWriter, r *http.Request) {
 	rest, ok := strings.CutPrefix(r.URL.Path, "/v1/wheels/")
 	if !ok || rest == "" {
@@ -108,7 +110,12 @@ func (s *Server) handleWheels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, action, found := strings.Cut(rest, "/")
-	if !found || action != "spin" || id == "" || strings.Contains(action, "/") {
+	if !found {
+		// Bare /v1/wheels/{id}: sync only.
+		s.handleSyncWheel(w, r, id)
+		return
+	}
+	if action != "spin" || id == "" || strings.Contains(action, "/") {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}

@@ -8,6 +8,7 @@ go_library(
         "server.go",
         "session.go",
         "spin.go",
+        "wheels.go",
     ],
     importpath = "spinwheel/backend/internal/http",
     visibility = ["//backend:__subpackages__"],

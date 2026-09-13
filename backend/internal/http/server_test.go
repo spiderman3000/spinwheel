@@ -80,6 +80,74 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+func TestCreateAndSyncWheel(t *testing.T) {
+	srv, _, _ := newTestServer(Config{})
+	h := srv.Handler()
+	post := func(body any) *httptest.ResponseRecorder {
+		return doRequest(t, h, http.MethodPost, "/v1/wheels", body,
+			map[string]string{"Content-Type": "application/json"}, nil)
+	}
+
+	rec := post(map[string]any{"name": "W", "items": []map[string]string{
+		{"option": " A "}, {"option": "B"},
+	}})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d (%s), want 201", rec.Code, rec.Body.String())
+	}
+	var created wheelJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("create body: %v", err)
+	}
+	if created.ID == "" || len(created.Items) != 2 || created.Items[0].ID == "" {
+		t.Fatalf("create response: %+v", created)
+	}
+	if created.Items[0].Option != "A" {
+		t.Fatalf("option not trimmed: %q", created.Items[0].Option)
+	}
+	if created.Items[0].Weight != 1.0 {
+		t.Fatalf("weight default = %v, want 1.0", created.Items[0].Weight)
+	}
+
+	// Sync: rename, keep first by ID, drop second, add third.
+	syncBody := map[string]any{"name": "W2", "items": []map[string]string{
+		{"id": created.Items[0].ID, "option": "A"},
+		{"option": "C"},
+	}}
+	rec = doRequest(t, h, http.MethodPut, "/v1/wheels/"+created.ID, syncBody,
+		map[string]string{"Content-Type": "application/json"}, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sync = %d (%s), want 200", rec.Code, rec.Body.String())
+	}
+	var synced wheelJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &synced); err != nil {
+		t.Fatalf("sync body: %v", err)
+	}
+	if synced.Name != "W2" || len(synced.Items) != 2 {
+		t.Fatalf("sync response: %+v", synced)
+	}
+	if synced.Items[0].ID != created.Items[0].ID {
+		t.Fatal("known item ID not preserved across sync")
+	}
+	if synced.Items[1].ID == "" || synced.Items[1].Option != "C" {
+		t.Fatalf("new item: %+v", synced.Items[1])
+	}
+
+	// Rejects.
+	if rec := post(map[string]any{"items": []string{}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty name = %d, want 400", rec.Code)
+	}
+	if rec := post(map[string]any{"name": "W", "items": []map[string]string{{"option": " "}}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("blank option = %d, want 400", rec.Code)
+	}
+	if rec := doRequest(t, h, http.MethodPut, "/v1/wheels/no-such-wheel", syncBody,
+		map[string]string{"Content-Type": "application/json"}, nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("sync missing = %d, want 404", rec.Code)
+	}
+	if rec := doRequest(t, h, http.MethodGet, "/v1/wheels", nil, nil, nil); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET wheels = %d, want 405", rec.Code)
+	}
+}
+
 func TestSpinRoundTripAndSessionCookie(t *testing.T) {
 	srv, svc, wheel := newTestServer(Config{})
 	h := srv.Handler()

@@ -24,8 +24,9 @@
   <meta name="twitter:description" content="Add your own options and spin for a random pick in the browser. Lightweight spin wheel for games, raffles, and quick decisions." />
 
   <!--
-    CSP is injected at build time via vite.config.ts for production.
-    During development, Vite requires inline scripts/styles for HMR.
+    CSP connect-src is injected at build time via vite.config.ts (API origin
+    from VITE_API_URL, localhost fallback for dev). No third-party analytics:
+    pageviews go to our own API (see postEvent in src/config/api.ts).
   -->
 
   <!-- SEO:ABSOLUTE_START -->
@@ -39,12 +40,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- Cloudflare Web Analytics -->
-    <script
-      defer
-      src="https://static.cloudflareinsights.com/beacon.min.js"
-      data-cf-beacon='{"token": "de710135d6a74521b4232cbabcb688a2"}'
-    ></script>
-    <!-- End Cloudflare Web Analytics -->
   </body>
 </html>

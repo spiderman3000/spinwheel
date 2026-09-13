@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import './App.css';
 import { Navbar, Playground } from './components/index';
+import { postEvent } from './config/api';
 
 export interface Item {
   id: number;
@@ -26,6 +27,9 @@ function App() {
     } else {
         document.documentElement.classList.remove('dark');
     }
+    // First-party pageview (deterministic analytics): same host as spins,
+    // so adblockers cannot strip it without breaking the app.
+    void postEvent({ type: 'PAGEVIEW', path: window.location.pathname });
   }, []);
 
   const toggleTheme = () => {

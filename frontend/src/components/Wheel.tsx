@@ -1,5 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'preact/hooks';
 import type { Item } from '../App';
+import {
+    ApiError,
+    computeItemsHash,
+    createWheel,
+    fetchSpin,
+    isWheelChanged,
+    postEvent,
+    syncWheel,
+    type ServerItem,
+    type SpinDecision,
+} from '../config/api';
+import { landingRotation, winnerIndexAt } from '../utils/spinMath';
 
 interface WheelProps {
     items: Item[];
@@ -7,6 +19,20 @@ interface WheelProps {
 }
 
 const LOGICAL_SIZE = 500;
+
+interface ServerSnapshot {
+    wheelId: string;
+    fingerprint: string;
+    items: ServerItem[];
+}
+
+/** Display name for the auto-synced server wheel. */
+const WHEEL_NAME = 'My wheel';
+
+/** Options-only fingerprint: any add/remove/rename invalidates the snapshot. */
+function fingerprint(list: Item[]): string {
+    return JSON.stringify(list.map((it) => it.option));
+}
 
 /** Smoother long deceleration than cubic (settles gently at the end). */
 function easeOutQuint(t: number): number {
@@ -36,6 +62,11 @@ const Wheel = ({ items, isDarkMode }: WheelProps) => {
 
     const [isSpinning, setIsSpinning] = useState(false);
     const [winner, setWinner] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    // Server snapshot of the current option list + local->server ID map.
+    // Re-synced lazily at spin time (never during animation).
+    const serverRef = useRef<ServerSnapshot | null>(null);
+    const idMapRef = useRef(new Map<number, string>());
 
     const accentColor = '#0071e3';
     const textColor = isDarkMode ? '#f5f5f7' : '#1d1d1f';
@@ -272,40 +303,133 @@ const Wheel = ({ items, isDarkMode }: WheelProps) => {
         };
     }, []);
 
+    /**
+     * Push the local option list to the server (create once, full-list
+     * replace after). The server preserves order, so response items map
+     * back onto local items positionally to rebuild the ID map.
+     */
+    const syncServerWheel = useCallback(
+        async (fp: string): Promise<ServerSnapshot> => {
+            const prev = serverRef.current;
+            const wheel = prev
+                ? await syncWheel(
+                      prev.wheelId,
+                      WHEEL_NAME,
+                      items.map((it) => {
+                          const known = idMapRef.current.get(it.id);
+                          return known ? { id: known, option: it.option } : { option: it.option };
+                      }),
+                  )
+                : await createWheel(
+                      WHEEL_NAME,
+                      items.map((it) => it.option),
+                  );
+            if (wheel.items.length !== items.length) {
+                throw new Error('server sync returned a different item count');
+            }
+            const next = new Map<number, string>();
+            wheel.items.forEach((s, i) => next.set(items[i].id, s.id));
+            idMapRef.current = next;
+            return { wheelId: wheel.id, fingerprint: fp, items: wheel.items };
+        },
+        [items],
+    );
+
+    /** Resolve (and cache) the server wheel, then draw one signed decision. */
+    const drawServerDecision = useCallback(async (): Promise<SpinDecision> => {
+        const fp = fingerprint(items);
+        let srv = serverRef.current;
+        if (!srv || srv.fingerprint !== fp) {
+            srv = await syncServerWheel(fp);
+            serverRef.current = srv;
+        }
+        const itemsHash = await computeItemsHash(srv.items);
+        const clientSeed = crypto.randomUUID();
+        void postEvent({ type: 'SPIN_START', wheel_id: srv.wheelId });
+        const decision = await fetchSpin(srv.wheelId, clientSeed, itemsHash);
+        if (
+            Number.isNaN(Date.parse(decision.expires_at)) ||
+            new Date(decision.expires_at).getTime() <= Date.now()
+        ) {
+            throw new Error('server decision already expired');
+        }
+        if (fingerprint(items) !== fp) {
+            // Options changed mid-flight: this decision belongs to the old list.
+            serverRef.current = null;
+            throw new Error('options changed during spin');
+        }
+        return decision;
+    }, [items, syncServerWheel]);
+
+    const animateToWinner = useCallback(
+        (decision: SpinDecision) => {
+            const count = items.length;
+            const jitterFrac = (Math.random() - 0.5) * 0.7;
+            const startRotation = rotationRef.current;
+            const totalRotation = landingRotation(
+                startRotation,
+                decision.winner_index,
+                count,
+                jitterFrac,
+            );
+            const startTime = performance.now();
+            const duration = 4200;
+
+            const tick = (currentTime: number) => {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = easeOutQuint(progress);
+                rotationRef.current = startRotation + totalRotation * eased;
+                drawWheel(rotationRef.current);
+
+                if (progress < 1) {
+                    rafRef.current = requestAnimationFrame(tick);
+                } else {
+                    setIsSpinning(false);
+                    const derived = winnerIndexAt(rotationRef.current, count);
+                    if (derived !== decision.winner_index) {
+                        console.error(
+                            `spin landed on slice ${derived}, server decided ${decision.winner_index}`,
+                        );
+                    }
+                    setWinner(decision.winner_item.option);
+                    void postEvent({
+                        type: 'SPIN_END',
+                        wheel_id: serverRef.current?.wheelId,
+                        spin_id: decision.spin_id,
+                        sig: decision.sig,
+                    });
+                }
+            };
+
+            rafRef.current = requestAnimationFrame(tick);
+        },
+        [drawWheel, items.length],
+    );
+
     const spin = () => {
         if (isSpinning || items.length === 0) return;
 
         setIsSpinning(true);
         setWinner(null);
+        setError(null);
 
-        const spins = 6 + Math.random() * 4;
-        const extraRotation = Math.random() * 2 * Math.PI;
-        const totalRotation = spins * 2 * Math.PI + extraRotation;
-
-        const startRotation = rotationRef.current;
-        const startTime = performance.now();
-        const duration = 4200;
-
-        const tick = (currentTime: number) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = easeOutQuint(progress);
-            rotationRef.current = startRotation + totalRotation * eased;
-            drawWheel(rotationRef.current);
-
-            if (progress < 1) {
-                rafRef.current = requestAnimationFrame(tick);
-            } else {
+        drawServerDecision()
+            .then(animateToWinner)
+            .catch((err: unknown) => {
+                if (isWheelChanged(err)) {
+                    // Our snapshot is stale; next tap re-syncs from scratch.
+                    serverRef.current = null;
+                    setError('Options changed — tap Spin again.');
+                } else if (err instanceof ApiError && err.status === 0) {
+                    setError("Couldn't reach the server. Check your connection and retry.");
+                } else if (err instanceof Error) {
+                    setError(err.message);
+                } else {
+                    setError('Unexpected error — please retry.');
+                }
                 setIsSpinning(false);
-                const finalRotation = rotationRef.current % (2 * Math.PI);
-                const winningAngle = (2 * Math.PI - finalRotation) % (2 * Math.PI);
-                const sliceAngle = (2 * Math.PI) / items.length;
-                const winnerIndex = Math.floor(winningAngle / sliceAngle);
-                setWinner(items[winnerIndex].option);
-            }
-        };
-
-        rafRef.current = requestAnimationFrame(tick);
+            });
     };
 
     return (
@@ -318,6 +442,12 @@ const Wheel = ({ items, isDarkMode }: WheelProps) => {
                 <div className="wheel-winner" role="status">
                     <span className="wheel-winner__label">Winner</span>
                     <span className="wheel-winner__name">{winner}</span>
+                </div>
+            )}
+
+            {error && (
+                <div className="wheel-error" role="alert">
+                    {error}
                 </div>
             )}
 

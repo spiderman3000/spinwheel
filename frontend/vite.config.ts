@@ -61,7 +61,33 @@ function seoBuildPlugin(siteRoot: string): Plugin {
 
 const siteUrl = normalizedSiteUrl();
 
+/**
+ * Injects a minimal connect-src CSP meta tag: the API origin from
+ * VITE_API_URL (production), or the local backend for dev. Only
+ * connect-src is restricted — everything else keeps the default (allow).
+ * Meta-tag CSP cannot use report-uri/frame-ancestors; those belong on the
+ * hosting headers (Pages _headers) when needed.
+ */
+function cspConnectPlugin(): Plugin {
+  return {
+    name: 'csp-connect',
+    transformIndexHtml(html) {
+      const raw = process.env.VITE_API_URL?.trim().replace(/\/+$/, '');
+      let origins = 'http://localhost:8080 http://127.0.0.1:8080';
+      if (raw) {
+        try {
+          origins = new URL(raw).origin;
+        } catch {
+          return html; // never break the build on a malformed API URL
+        }
+      }
+      const tag = `  <meta http-equiv="Content-Security-Policy" content="connect-src 'self' ${origins}" />\n`;
+      return html.replace('</head>', `${tag}</head>`);
+    },
+  };
+}
+
 export default defineConfig({
   base,
-  plugins: [preact(), seoBuildPlugin(siteUrl)],
+  plugins: [preact(), seoBuildPlugin(siteUrl), cspConnectPlugin()],
 });

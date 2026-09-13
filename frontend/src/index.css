@@ -358,6 +358,13 @@ input:focus {
   text-shadow: 0 1px 0 color-mix(in srgb, var(--background) 40%, transparent);
 }
 
+.wheel-error {
+  max-width: 32rem;
+  text-align: center;
+  color: #b42318;
+  font-size: 0.875rem;
+}
+
 @keyframes wheel-winner-in {
   from {
     opacity: 0;
